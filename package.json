@@ -1,0 +1,20 @@
+{
+  "name": "orchestrate-keynote-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Keynote demo: an AI assistant that surfaces business signals, drafts the action, and lets a human approve it.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "web:install": "npm --prefix web install",
+    "web:build": "npm --prefix web run build",
+    "web": "npm --prefix web run start",
+    "web:dev": "npm --prefix web run dev"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orchestrate
+      POSTGRES_USER: orchestrate_admin
+      POSTGRES_PASSWORD: orchestrate_admin
+    ports:
+      - "5432:5432"
+    volumes:
+      # Runs once, on the first start with an empty data volume.
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orchestrate_admin -d orchestrate"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:
