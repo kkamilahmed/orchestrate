@@ -20,6 +20,11 @@ The quickest way is one command, which installs and builds on the first run, ope
 ./run.sh              # add --rebuild after changing frontend code
 ```
 
+It asks which ports to use for the web app and the API; press Enter to keep 3000 and 3001.
+A port that is taken is rejected and asked for again.
+To skip the questions (or when there is no terminal), set them up front: `WEB_PORT=4000 API_PORT=4001 ./run.sh`.
+Changing the API port rebuilds the web app once, because Next.js bakes the `/api` proxy target into the build.
+
 Or step by step:
 
 ```bash
@@ -63,6 +68,8 @@ Click an empty area first if you have just typed something.
 | `Shift+I` | Industry switcher (then `1`-`7`). Changes company name, logo text, persona, data, signals and flows. |
 | `Shift+O` | Toggle offline mode. |
 | `Shift+R` | Reset the demo: deletes the activity, tasks and chats created during the session and returns to the home screen. Seeded history is kept. |
+
+The reset is also available from the reset icon in the header, which asks for confirmation first.
 
 The small dot at the far right of the header shows the mode: green means the live model, gray means offline.
 Hover over it to see the model or the reason.

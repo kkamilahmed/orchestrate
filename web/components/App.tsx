@@ -10,13 +10,14 @@ import {
   HeaderName,
   InlineLoading,
   InlineNotification,
+  Modal,
   SideNav,
   SideNavDivider,
   SideNavItems,
   SideNavLink,
   SkipToContent,
 } from '@carbon/react';
-import { Activity, Add, Chat, CheckmarkFilled, Enterprise, Flash, Home as HomeIcon, SendFilled } from '@carbon/icons-react';
+import { Activity, Add, Chat, CheckmarkFilled, Enterprise, Flash, Home as HomeIcon, Reset, SendFilled } from '@carbon/icons-react';
 import { api, streamPost } from '@/lib/api';
 import { iconFor } from '@/lib/icons';
 import { renderMarkdown } from '@/lib/markdown';
@@ -56,6 +57,8 @@ export default function App() {
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityVersion, setActivityVersion] = useState(0);
   const [newActivity, setNewActivity] = useState(0);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [fallbackOffline, setFallbackOffline] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -251,6 +254,7 @@ export default function App() {
 
   const resetDemo = useCallback(async () => {
     await api('/api/reset', {});
+    setConfirmReset(false);
     setModalOpen(false);
     setActivityOpen(false);
     setNewActivity(0);
@@ -334,6 +338,9 @@ export default function App() {
           AI Assistant
         </HeaderName>
         <HeaderGlobalBar>
+          <HeaderGlobalAction aria-label="Reset demo" tooltipAlignment="end" onClick={() => setConfirmReset(true)}>
+            <Reset size={20} />
+          </HeaderGlobalAction>
           <HeaderGlobalAction
             aria-label="Activity"
             isActive={activityOpen}
@@ -490,6 +497,31 @@ export default function App() {
 
       <ActivityPanel open={activityOpen} version={activityVersion} industry={state.industry.slug} onClose={() => setActivityOpen(false)} />
       <IndustryModal open={modalOpen} industries={state.industries} current={state.industry.slug} onSelect={switchIndustry} onClose={() => setModalOpen(false)} />
+      <Modal
+        open={confirmReset}
+        danger
+        size="sm"
+        modalHeading="Reset the demo?"
+        primaryButtonText={resetting ? 'Resetting...' : 'Reset'}
+        primaryButtonDisabled={resetting}
+        secondaryButtonText="Cancel"
+        onRequestClose={() => !resetting && setConfirmReset(false)}
+        onRequestSubmit={async () => {
+          setResetting(true);
+          try {
+            await resetDemo();
+          } catch (err: any) {
+            setConfirmReset(false);
+            showError(err.message);
+          } finally {
+            setResetting(false);
+          }
+        }}
+      >
+        <p className="prose">
+          Clears everything done since the demo started: messages sent, &quot;Contacted today&quot; marks, tasks and new chats. The seeded history stays.
+        </p>
+      </Modal>
     </>
   );
 }

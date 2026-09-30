@@ -93,6 +93,7 @@ export default function GuidedFlow(props: Props) {
           items={review.items as ReviewItem[]}
           productId={review.productId}
           followUpDays={review.followUpDays}
+          overrides={review.overrides}
           chatId={props.chatId}
           model={props.model}
           locked={lockFor('drafts', `Approved by ${props.userName}`)}

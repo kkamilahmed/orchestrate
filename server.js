@@ -292,13 +292,13 @@ function baseVars({ industry, user, today, flow, followUp }) {
   };
 }
 
-function productVars(product, attributes) {
+function productVars(product, attributes, edits = {}) {
   if (!product) {
     return { product: '', product_description: '', price: '', price_unit: '', discount_pct: 0, discounted_price: '', savings: '', eligible: false, eligibility_note: '' };
   }
   const { eligible, failed } = evaluateEligibility(product, attributes || {});
-  const discount = eligible ? Number(product.discount_pct) : 0;
-  const price = Number(product.price);
+  const discount = eligible ? ('discount_pct' in edits ? edits.discount_pct : Number(product.discount_pct)) : 0;
+  const price = 'price' in edits ? edits.price : Number(product.price);
   const discounted = round2(price * (1 - discount / 100));
   return {
     product: product.name,
@@ -313,9 +313,66 @@ function productVars(product, attributes) {
   };
 }
 
-// Variables for one record. Attributes named by money/quantity facts are formatted.
-function recordVars({ base, record, eventDates, product, facts, today }) {
+// Reviewer edits of fact values arrive as { recordId: { key: value } }. Dates are
+// YYYY-MM-DD, everything else a non-negative number. Invalid values are ignored.
+function parseOverrides(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [id, values] of Object.entries(raw)) {
+    if (Number.isInteger(Number(id)) && values && typeof values === 'object') out[Number(id)] = values;
+  }
+  return out;
+}
+
+function overrideValue(kind, v) {
+  if (kind === 'date') {
+    return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && toISODate(parseISODate(v)) === v ? v : null;
+  }
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function formatFactVar(kind, v) {
+  if (kind === 'date') return formatDateLong(v);
+  if (kind === 'money') return formatMoney(v);
+  if (kind === 'quantity') return formatNumber(v);
+  return v;
+}
+
+// Facts calculated from other values, with how the review screen explains them. They are
+// never edited directly, so the price, discount and result always agree.
+const DERIVED_FACTS = {
+  discounted_price: 'Price minus the discount',
+  savings: 'Price times the discount',
+  follow_up_date: 'Set by Follow-up in (days)',
+};
+
+// The raw value a reviewer edits for a fact (ISO date or plain number), or null when
+// the fact is derived from other values.
+function factInput(fact, vars, record, eventDates) {
+  if (fact.key in DERIVED_FACTS) return null;
+  if (fact.kind === 'date') {
+    if (fact.key === 'event_date') return record.event_date || null;
+    const events = eventDates[record.id] || {};
+    return fact.key.startsWith('date_') ? events[fact.key.slice(5)] || null : null;
+  }
+  const v = vars[fact.key];
+  if (typeof v === 'number') return v;
+  if (typeof v !== 'string' || !v) return null;
+  const n = numberFrom(v.replace(/^\$/, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Variables for one record, with the reviewer's fact edits applied. Attributes named by
+// money/quantity facts are formatted. Also returns the editable raw value of each fact.
+function recordVars({ base, record, eventDates, product, facts, today, overrides = {} }) {
   const attrs = record.attributes || {};
+  const edits = {};
+  for (const fact of facts || []) {
+    if (!(fact.key in overrides) || fact.key in DERIVED_FACTS) continue;
+    const v = overrideValue(fact.kind, overrides[fact.key]);
+    if (v !== null) edits[fact.key] = v;
+  }
   const vars = { ...base };
   for (const [k, v] of Object.entries(attrs)) {
     if (v !== null && typeof v !== 'object') vars[k] = v;
@@ -326,6 +383,7 @@ function recordVars({ base, record, eventDates, product, facts, today }) {
     if (kind === 'money') vars[k] = formatMoney(attrs[k]);
     if (kind === 'quantity') vars[k] = formatNumber(attrs[k]);
   }
+  const eventDate = edits.event_date || record.event_date;
   const parts = record.name.trim().split(/\s+/);
   Object.assign(vars, {
     record_id: record.id,
@@ -337,13 +395,25 @@ function recordVars({ base, record, eventDates, product, facts, today }) {
     record_type: record.record_type,
     event: record.event || '',
     event_type: record.event_type || '',
-    event_date: record.event_date ? formatDateLong(record.event_date) : '',
-    days_since: record.event_date ? Math.max(0, daysBetween(record.event_date, today)) : '',
-    days_until: record.event_date ? Math.max(0, daysBetween(today, record.event_date)) : '',
+    event_date: eventDate ? formatDateLong(eventDate) : '',
+    days_since: eventDate ? Math.max(0, daysBetween(eventDate, today)) : '',
+    days_until: eventDate ? Math.max(0, daysBetween(today, eventDate)) : '',
   });
   for (const [type, iso] of Object.entries(eventDates[record.id] || {})) vars[`date_${type}`] = formatDateLong(iso);
-  Object.assign(vars, productVars(product, attrs));
-  return vars;
+  Object.assign(vars, productVars(product, attrs, edits));
+
+  const inputs = {};
+  for (const fact of facts || []) {
+    const input = factInput(fact, vars, record, eventDates);
+    if (input === null) continue;
+    if (fact.key in edits) {
+      inputs[fact.key] = edits[fact.key];
+      vars[fact.key] = formatFactVar(fact.kind, edits[fact.key]);
+    } else {
+      inputs[fact.key] = input;
+    }
+  }
+  return { vars, inputs };
 }
 
 function factDisplay(fact, value) {
@@ -363,16 +433,30 @@ function factDisplay(fact, value) {
   }
 }
 
-function buildFacts(facts, vars, labelSuffix = '') {
+// The facts shown for review and passed to the model. Each carries the value before the
+// reviewer's edits (original) so the edit can be shown and logged; duplicates are
+// dropped by their database value so a fact never disappears while it is being edited.
+function buildFacts(facts, { vars, inputs, originalVars, recordId }, labelSuffix = '') {
   const out = [];
   const seen = new Set();
   for (const fact of facts || []) {
     const display = factDisplay(fact, vars[fact.key]);
-    if (!display) continue;
-    const id = `${fact.kind}:${display}`;
+    const original = factDisplay(fact, originalVars[fact.key]);
+    if (!display || !original) continue;
+    const id = `${fact.kind}:${original}`;
     if (seen.has(id)) continue;
     seen.add(id);
-    out.push({ key: fact.key, label: fact.label + labelSuffix, kind: fact.kind, unit: fact.unit || '', value: display });
+    out.push({
+      key: fact.key,
+      record_id: recordId,
+      label: fact.label + labelSuffix,
+      kind: fact.kind,
+      unit: fact.unit || '',
+      value: display,
+      input: fact.key in inputs ? inputs[fact.key] : null,
+      derived: DERIVED_FACTS[fact.key] || null,
+      original: display === original ? null : original,
+    });
   }
   return out;
 }
@@ -380,7 +464,7 @@ function buildFacts(facts, vars, labelSuffix = '') {
 // Everything a flow step needs for a set of selected records: variables, rendered
 // prompt, recipients and the fixed facts. Used by review, draft, check and approve so
 // the server (not the browser) is always the source of truth.
-async function buildFlowContext(industry, flow, recordIds, productId, followUpDays) {
+async function buildFlowContext(industry, flow, recordIds, productId, followUpDays, overrides = {}) {
   const steps = flow.steps || {};
   const ids = [...new Set((recordIds || []).map(Number).filter(Number.isInteger))].slice(0, 50);
   if (!ids.length) throw new HttpError(400, 'Select at least one record.');
@@ -400,7 +484,12 @@ async function buildFlowContext(industry, flow, recordIds, productId, followUpDa
   const offline = await q1(`SELECT response_text FROM offline_responses WHERE flow_id = $1 AND kind = 'draft' ORDER BY id LIMIT 1`, [flow.id]);
   const eventDates = await eventDatesFor(ids);
   const base = baseVars({ industry, user, today, flow, followUp });
-  const perRecord = records.map((record) => recordVars({ base, record, eventDates, product, facts: steps.facts, today }));
+  const perRecord = records.map((record) => {
+    const args = { base, record, eventDates, product, facts: steps.facts, today };
+    const { vars, inputs } = recordVars({ ...args, overrides: overrides[record.id] || {} });
+    const originalVars = overrides[record.id] ? recordVars(args).vars : vars;
+    return { vars, inputs, originalVars, recordId: record.id };
+  });
 
   const makeItem = (vars, facts, itemRecords) => {
     const prompt = renderTemplate(template ? template.template_text : '', vars);
@@ -425,19 +514,19 @@ async function buildFlowContext(industry, flow, recordIds, productId, followUpDa
   if (steps.draft_mode === 'combined') {
     const listTemplate = steps.list_template || '- {{name}}: {{event}} ({{event_date}})';
     const vars = {
-      ...perRecord[0],
+      ...perRecord[0].vars,
       ...pluralVars(records.length),
-      records_list: perRecord.map((v) => renderTemplate(listTemplate, v)).join('\n'),
+      records_list: perRecord.map((r) => renderTemplate(listTemplate, r.vars)).join('\n'),
       names: joinNames(records.map((r) => r.name)),
     };
-    const facts = perRecord.flatMap((v, i) => buildFacts(steps.facts, v, records.length > 1 ? ` (${records[i].name})` : ''));
+    const facts = perRecord.flatMap((r, i) => buildFacts(steps.facts, r, records.length > 1 ? ` (${records[i].name})` : ''));
     items = [makeItem(vars, facts, records)];
   } else {
-    items = perRecord.map((vars, i) => makeItem({ ...vars, ...pluralVars(1), names: records[i].name, records_list: '' }, buildFacts(steps.facts, vars), [records[i]]));
+    items = perRecord.map((r, i) => makeItem({ ...r.vars, ...pluralVars(1), names: records[i].name, records_list: '' }, buildFacts(steps.facts, r), [records[i]]));
   }
 
   const ineligible = product && Object.keys(product.eligibility_rules || {}).length
-    ? perRecord.filter((v) => !v.eligible).map((v) => ({ name: v.name, note: v.eligibility_note }))
+    ? perRecord.filter((r) => !r.vars.eligible).map((r) => ({ name: r.vars.name, note: r.vars.eligibility_note }))
     : [];
 
   return { steps, product, followUp, items, ineligible, today };
@@ -529,7 +618,7 @@ function checkDraft(text, item) {
         expected: expected ? expected.value : null,
         label: expected ? expected.label : kindLabel[kind],
         message: expected
-          ? `Draft says ${v.raw}, database says ${expected.value} (${expected.label.toLowerCase()})`
+          ? `Draft says ${v.raw}, ${expected.original ? 'your review says' : 'database says'} ${expected.value} (${expected.label.toLowerCase()})`
           : `${v.raw} doesn't come from the database`,
       });
     }
@@ -923,6 +1012,12 @@ async function handleFlowStart(req, res, slug) {
   sendJson(res, 200, { chat, ...data });
 }
 
+// The review settings (product, follow-up and fact edits) every flow step is called with.
+function flowContextFor(industry, flow, body, recordIds) {
+  const productId = body.product_id === null ? null : body.product_id === undefined ? undefined : Number(body.product_id);
+  return buildFlowContext(industry, flow, recordIds, productId, body.follow_up_days, parseOverrides(body.overrides));
+}
+
 function publicItem(item) {
   return {
     record_ids: item.record_ids,
@@ -940,8 +1035,7 @@ async function handleFlowReview(req, res, slug) {
   const industry = await getIndustry();
   const flow = await getFlow(industry.id, slug);
   const body = await readJson(req);
-  const productId = body.product_id === null ? null : body.product_id === undefined ? undefined : Number(body.product_id);
-  const ctx = await buildFlowContext(industry, flow, body.record_ids, productId, body.follow_up_days);
+  const ctx = await flowContextFor(industry, flow, body, body.record_ids);
   sendJson(res, 200, {
     product: ctx.product && { id: ctx.product.id, name: ctx.product.name, description: ctx.product.description },
     items: ctx.items.map(publicItem),
@@ -978,8 +1072,7 @@ async function handleFlowDraft(req, res, slug) {
   const industry = await getIndustry();
   const flow = await getFlow(industry.id, slug);
   const body = await readJson(req);
-  const productId = body.product_id === null ? null : body.product_id === undefined ? undefined : Number(body.product_id);
-  const ctx = await buildFlowContext(industry, flow, body.record_ids, productId, body.follow_up_days);
+  const ctx = await flowContextFor(industry, flow, body, body.record_ids);
   const item = ctx.items[0];
   const sse = openSse(req, res);
   try {
@@ -1005,8 +1098,7 @@ async function handleFlowCheck(req, res, slug) {
   const industry = await getIndustry();
   const flow = await getFlow(industry.id, slug);
   const body = await readJson(req);
-  const productId = body.product_id === null ? null : body.product_id === undefined ? undefined : Number(body.product_id);
-  const ctx = await buildFlowContext(industry, flow, body.record_ids, productId, body.follow_up_days);
+  const ctx = await flowContextFor(industry, flow, body, body.record_ids);
   sendJson(res, 200, checkDraft(String(body.text || ''), ctx.items[0]));
 }
 
@@ -1016,7 +1108,6 @@ async function handleFlowApprove(req, res, slug) {
   const body = await readJson(req);
   const steps = flow.steps || {};
   const approve = steps.approve || {};
-  const productId = body.product_id === null ? null : body.product_id === undefined ? undefined : Number(body.product_id);
   const items = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
   if (!items.length) throw new HttpError(400, 'Nothing to approve');
 
@@ -1026,7 +1117,7 @@ async function handleFlowApprove(req, res, slug) {
   try {
     await client.query('BEGIN');
     for (const sent of items) {
-      const ctx = await buildFlowContext(industry, flow, sent.record_ids, productId, body.follow_up_days);
+      const ctx = await flowContextFor(industry, flow, body, sent.record_ids);
       const item = ctx.items[0];
       const text = String(sent.body || '').slice(0, 20000);
       if (!text.trim()) throw new HttpError(400, 'The draft is empty.');
@@ -1041,6 +1132,7 @@ async function handleFlowApprove(req, res, slug) {
         product: ctx.product ? ctx.product.name : null,
         records: item.names,
         facts_verified: check.ok,
+        edited_facts: item.facts.filter((f) => f.original).map((f) => `${f.label}: ${f.original} changed to ${f.value}`),
         fact_issues: check.issues.map((i) => i.message),
         source: sent.source === 'live' ? 'live' : 'offline',
         approved_by: item.vars.sender,
@@ -1326,7 +1418,7 @@ async function main() {
     process.exit(1);
   }
   server.listen(PORT, () => {
-    console.log(`Orchestrate API listening on http://localhost:${PORT} (open the Next.js app at http://localhost:3000)`);
+    console.log(`Orchestrate API listening on http://localhost:${PORT} (open the Next.js app at http://localhost:${process.env.WEB_PORT || 3000})`);
     console.log(`  LLM: ${OPENROUTER_API_KEY ? `live via OpenRouter (${OPENROUTER_MODEL})` : 'no OPENROUTER_API_KEY, serving offline responses'}`);
     console.log(`  Presenter keys: Shift+I industry, Shift+O offline toggle, Shift+R reset`);
   });

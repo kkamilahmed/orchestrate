@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Dropdown, InlineLoading, InlineNotification, NumberInput, Tag, TextArea } from '@carbon/react';
-import { AiLaunch, CheckmarkFilled, Edit, Locked, Misuse } from '@carbon/icons-react';
+import { Button, DatePicker, DatePickerInput, Dropdown, InlineLoading, InlineNotification, NumberInput, TextArea, TextInput } from '@carbon/react';
+import { AiLaunch, CheckmarkFilled, DataBase, Edit, Misuse, Reset } from '@carbon/icons-react';
 import { api } from '@/lib/api';
-import type { FlowStart, Review, ReviewItem } from '@/lib/types';
+import type { Fact, FactOverrides, FlowStart, Review, ReviewItem } from '@/lib/types';
 import { AssistantMessage } from './common';
 
-export type ReviewResult = { items: ReviewItem[]; productId: number | null; followUpDays: number; edited: boolean };
+export type ReviewResult = { items: ReviewItem[]; productId: number | null; followUpDays: number; overrides: FactOverrides; edited: boolean };
 
 type Props = {
   data: FlowStart;
@@ -24,34 +24,45 @@ export default function ReviewCard({ data, recordIds, locked, onApprove, onCance
   const [review, setReview] = useState<Review | null>(null);
   const [productId, setProductId] = useState<number | null>(data.default_product_id);
   const [followUpDays, setFollowUpDays] = useState<number | null>(null);
+  const [overrides, setOverrides] = useState<FactOverrides>({});
   const [prompts, setPrompts] = useState<string[]>([]);
   const [edited, setEdited] = useState<boolean[]>([]);
   const [current, setCurrent] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  const validOverrides = Object.values(overrides).every((values) => Object.values(values).every(isValidInput));
+
   useEffect(() => {
+    if (!validOverrides) return;
     let cancelled = false;
     setLoading(true);
-    api<Review>(`/api/flows/${data.flow.slug}/review`, {
-      record_ids: recordIds,
-      product_id: productId,
-      follow_up_days: followUpDays ?? undefined,
-    })
-      .then((r) => {
-        if (cancelled) return;
-        setReview(r);
-        setPrompts(r.items.map((it) => it.prompt));
-        setEdited(r.items.map(() => false));
-        if (followUpDays === null) setFollowUpDays(r.follow_up.days);
-        setLoading(false);
-      })
-      .catch((err) => !cancelled && onError(err.message));
+    // Wait for typing to pause before re-rendering, except on the first load.
+    const timer = setTimeout(
+      () =>
+        api<Review>(`/api/flows/${data.flow.slug}/review`, {
+          record_ids: recordIds,
+          product_id: productId,
+          follow_up_days: followUpDays ?? undefined,
+          overrides,
+        })
+          .then((r) => {
+            if (cancelled) return;
+            setReview(r);
+            setPrompts(r.items.map((it) => it.prompt));
+            setEdited(r.items.map(() => false));
+            if (followUpDays === null) setFollowUpDays(r.follow_up.days);
+            setLoading(false);
+          })
+          .catch((err) => !cancelled && onError(err.message)),
+      review ? 300 : 0
+    );
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-    // Re-render the prompts from the template whenever the product or follow-up changes.
+    // Re-render the prompts from the template whenever the product, follow-up or a fact changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId, followUpDays]);
+  }, [productId, followUpDays, overrides]);
 
   if (!review) {
     return (
@@ -138,14 +149,24 @@ export default function ReviewCard({ data, recordIds, locked, onApprove, onCance
             {item.facts.length > 0 && (
               <div className="span-12">
                 <div className="facts-label">
-                  <Locked size={14} />
-                  Locked values from the database. The draft must use these exactly.
+                  <DataBase size={14} />
+                  Values from the database. Change one and the prompt and draft use your value exactly.
+                  {item.facts.some((f) => overrides[f.record_id]?.[f.key] !== undefined) && !locked && (
+                    <Button kind="ghost" size="sm" renderIcon={Reset} className="facts-reset" onClick={() => setOverrides(withoutRecords(overrides, item.record_ids))}>
+                      Reset to database
+                    </Button>
+                  )}
                 </div>
-                <div className="facts">
+                <div className="facts-grid">
                   {item.facts.map((f) => (
-                    <Tag key={`${f.key}-${f.value}`} type="blue" renderIcon={Locked}>
-                      {f.label}: {f.value}
-                    </Tag>
+                    <FactField
+                      key={`${f.record_id}-${f.key}`}
+                      id={`fact-${data.chat.id}-${f.record_id}-${f.key}`}
+                      fact={f}
+                      value={overrides[f.record_id]?.[f.key]}
+                      disabled={Boolean(locked)}
+                      onChange={(v) => setOverrides((o) => ({ ...o, [f.record_id]: { ...o[f.record_id], [f.key]: v } }))}
+                    />
                   ))}
                 </div>
               </div>
@@ -189,13 +210,14 @@ export default function ReviewCard({ data, recordIds, locked, onApprove, onCance
             <Button
               kind="primary"
               renderIcon={AiLaunch}
-              disabled={loading}
+              disabled={loading || !validOverrides}
               onClick={() =>
                 onApprove({
                   items: review.items.map((it, i) => ({ ...it, prompt: prompts[i] })),
                   productId,
                   followUpDays: followUpDays ?? review.follow_up.days,
-                  edited: edited.some(Boolean),
+                  overrides,
+                  edited: edited.some(Boolean) || review.items.some((it) => it.facts.some((f) => f.original)),
                 })
               }
             >
@@ -206,6 +228,77 @@ export default function ReviewCard({ data, recordIds, locked, onApprove, onCance
       </div>
     </AssistantMessage>
   );
+}
+
+// One editable fact: a date picker for dates, a number field for everything else. The
+// database value stays visible underneath once it has been changed.
+function FactField({ id, fact, value, disabled, onChange }: { id: string; fact: Fact; value: string | number | undefined; disabled: boolean; onChange: (v: string | number) => void }) {
+  const current = value ?? fact.input ?? '';
+  const helper = fact.original ? `Database: ${fact.original}` : 'From the database';
+  if (fact.input === null) {
+    // Calculated from other values (e.g. price and discount), so it follows them instead of being typed.
+    return (
+      <TextInput
+        id={id}
+        className={fact.original ? 'is-edited' : ''}
+        labelText={fact.label}
+        value={fact.value}
+        helperText={fact.original ? `Database: ${fact.original}` : fact.derived || 'From the database'}
+        readOnly
+      />
+    );
+  }
+  if (fact.kind === 'date') {
+    return (
+      <DatePicker
+        datePickerType="single"
+        dateFormat="m/d/Y"
+        value={isoToDate(String(current))}
+        readOnly={disabled}
+        onChange={(dates: Date[]) => dates[0] && onChange(dateToIso(dates[0]))}
+      >
+        <DatePickerInput id={id} labelText={fact.label} placeholder="mm/dd/yyyy" helperText={helper} className={fact.original ? 'is-edited' : ''} />
+      </DatePicker>
+    );
+  }
+  const label = fact.kind === 'money' ? `${fact.label} ($)` : fact.kind === 'percent' ? `${fact.label} (%)` : fact.unit ? `${fact.label} (${fact.unit})` : fact.label;
+  return (
+    <NumberInput
+      id={id}
+      className={fact.original ? 'is-edited' : ''}
+      label={label}
+      helperText={helper}
+      min={0}
+      step={fact.kind === 'money' ? 0.01 : 1}
+      allowEmpty
+      hideSteppers
+      value={current}
+      invalid={!isValidInput(current)}
+      invalidText="Enter a number of 0 or more."
+      readOnly={disabled}
+      onChange={(e: any, { value: v }: any) => onChange(v === undefined ? e.target.value : v)}
+    />
+  );
+}
+
+function isValidInput(v: string | number) {
+  if (typeof v === 'number') return Number.isFinite(v) && v >= 0;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return true;
+  return v.trim() !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+}
+
+function withoutRecords(overrides: FactOverrides, recordIds: number[]): FactOverrides {
+  return Object.fromEntries(Object.entries(overrides).filter(([id]) => !recordIds.includes(Number(id))));
+}
+
+// Dates travel as YYYY-MM-DD; the picker works with local Date objects.
+function isoToDate(iso: string) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return y && m && d ? new Date(y, m - 1, d) : undefined;
+}
+
+function dateToIso(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function capitalize(s: string) {

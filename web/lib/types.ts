@@ -58,7 +58,23 @@ export type FlowStart = {
   default_product_id: number | null;
 };
 
-export type Fact = { key: string; label: string; kind: string; unit: string; value: string };
+// input is the editable raw value (YYYY-MM-DD or a number), null when the fact can't be
+// edited. derived explains how a calculated fact is worked out. original is the database
+// value when the reviewer's changes moved it.
+export type Fact = {
+  key: string;
+  record_id: number;
+  label: string;
+  kind: string;
+  unit: string;
+  value: string;
+  input: string | number | null;
+  derived: string | null;
+  original: string | null;
+};
+
+// Reviewer edits of fact values: { recordId: { factKey: value } }.
+export type FactOverrides = Record<number, Record<string, string | number>>;
 
 export type ReviewItem = {
   record_ids: number[];

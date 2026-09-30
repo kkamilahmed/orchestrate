@@ -5,7 +5,7 @@ import { Button, Dropdown, InlineLoading, InlineNotification, Tab, TabList, Tabs
 import { Chat, CheckmarkFilled, Document, Email, Locked, Misuse, Phone, Renew, Send, Time, ToolKit, WarningAltFilled } from '@carbon/icons-react';
 import type { CarbonIconType } from '@carbon/icons-react';
 import { api, streamPost } from '@/lib/api';
-import type { ApproveResult, FactCheck, FlowStart, ReviewItem } from '@/lib/types';
+import type { ApproveResult, FactCheck, FactOverrides, FlowStart, ReviewItem } from '@/lib/types';
 import { AiBadge, AssistantMessage, scrollToBottom } from './common';
 
 type DraftStatus = 'pending' | 'streaming' | 'done' | 'error';
@@ -24,6 +24,7 @@ type Props = {
   items: ReviewItem[];
   productId: number | null;
   followUpDays: number;
+  overrides: FactOverrides;
   chatId: () => number | null;
   model: string;
   locked: false | { text: string; cancelled?: boolean };
@@ -40,7 +41,7 @@ function contentNoun(type: string) {
   return /^[A-Z]{2,}$/.test(type) ? type : type.toLowerCase();
 }
 
-export default function DraftsCard({ data, items, productId, followUpDays, chatId, model, locked, onApproved, onCancel, onFallback }: Props) {
+export default function DraftsCard({ data, items, productId, followUpDays, overrides, chatId, model, locked, onApproved, onCancel, onFallback }: Props) {
   const flow = data.flow;
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     items.map((it) => ({ ...it, body: '', status: 'pending', check: null, source: null, contentType: flow.content_type }))
@@ -58,7 +59,7 @@ export default function DraftsCard({ data, items, productId, followUpDays, chatI
     setDrafts((prev) => prev.map((d, j) => (j === i ? { ...d, ...(typeof patch === 'function' ? patch(d) : patch) } : d)));
   }, []);
 
-  const base = { product_id: productId, follow_up_days: followUpDays };
+  const base = { product_id: productId, follow_up_days: followUpDays, overrides };
 
   const generate = useCallback(
     async (i: number) => {
@@ -187,7 +188,7 @@ export default function DraftsCard({ data, items, productId, followUpDays, chatI
             <h3 className="card__title">
               {multi ? `${drafts.length} drafts ready for review` : `Draft ${contentNoun(flow.content_type)} to ${drafts[0].title}`}
             </h3>
-            <p className="card__subtitle">Streamed from the model with database values locked. Fully editable.</p>
+            <p className="card__subtitle">Streamed from the model with the reviewed values locked. Fully editable.</p>
           </div>
           <div className="card__head-right">
             <AiBadge title="AI-drafted message">
@@ -320,7 +321,7 @@ function FactCheckRow({ draft }: { draft: Draft }) {
     return (
       <div className="check-row">
         <Tag type="green" renderIcon={CheckmarkFilled}>
-          {n ? `Facts match database (${n} checked)` : 'No figures to verify'}
+          {n ? `Facts match ${draft.facts.some((f) => f.original) ? 'reviewed values' : 'database'} (${n} checked)` : 'No figures to verify'}
         </Tag>
         {draft.check.verified.map((v) => (
           <Tag key={v.label + v.value} type="gray" size="sm" renderIcon={Locked}>

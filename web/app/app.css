@@ -747,20 +747,41 @@ svg.warn {
 .facts-label svg {
   fill: var(--cds-icon-secondary);
 }
-.facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+.facts-label .facts-reset {
+  /* Sits in the label row without making it taller, so fields don't jump when it appears. */
+  margin: -0.5rem 0 -0.5rem auto;
 }
-.facts .cds--tag,
+.facts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: 1rem;
+}
+.facts-grid .cds--date-picker,
+.facts-grid .cds--date-picker-container,
+.facts-grid .cds--date-picker__input {
+  width: 100%;
+  inline-size: 100%;
+}
+/* Calculated values can't be typed into, so they drop the field fill (Carbon's read-only look). */
+.facts-grid .cds--text-input[readonly] {
+  background: transparent;
+  border-bottom: 1px dashed var(--cds-border-strong);
+  cursor: default;
+}
+.facts-grid .cds--text-input[readonly]:focus {
+  outline: none;
+}
+/* A changed value gets a blue rule so the edit is visible from the back of the room. */
+.facts-grid .is-edited input,
+.facts-grid input.is-edited {
+  box-shadow: inset 3px 0 0 var(--cds-border-interactive);
+}
 .check-row .cds--tag {
   margin: 0;
 }
 /* Carbon caps tag width and truncates; fact values must always be readable in full. */
-.facts .cds--tag,
 .check-row .cds--tag,
 .confirm__meta .cds--tag,
-.facts .cds--tag__label,
 .check-row .cds--tag__label,
 .confirm__meta .cds--tag__label {
   max-inline-size: none;
