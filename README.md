@@ -6,7 +6,7 @@ It surfaces the right moment from business data (a life event, a renewal, a risk
 - **Frontend:** Next.js (App Router) with IBM Carbon Design System (`@carbon/react`), White theme.
 - **API:** Node.js 18+ (`node:http` and built-in `fetch`). The only dependency is `pg`.
 - **Database:** PostgreSQL 16. All data lives there: industries, branding, users, records, signals, flows, prompt templates, knowledge base, offline responses and activity.
-- **LLM:** OpenRouter, proxied through the API and streamed to the browser over SSE. The key never reaches the browser.
+- **LLM:** OpenRouter or OpenAI, proxied through the API and streamed to the browser over SSE. The key never reaches the browser.
 
 The presenter walkthrough is in [KEYNOTE.md](KEYNOTE.md).
 
@@ -32,7 +32,7 @@ Or step by step:
 docker compose up -d
 
 # 2. API server (port 3001)
-cp .env.example .env          # add OPENROUTER_API_KEY, or leave it empty for offline mode
+cp .env.example .env          # add OPENROUTER_API_KEY or OPENAI_API_KEY, or leave both empty for offline mode
 npm install
 node server.js
 
@@ -72,14 +72,14 @@ Click an empty area first if you have just typed something.
 The reset is also available from the reset icon in the header, which asks for confirmation first.
 
 The small dot at the far right of the header shows the mode: green means the live model, gray means offline.
-Hover over it to see the model or the reason.
+Hover over it to see the model and provider, or the reason.
 
 ## How it works
 
 ```
 Browser (Next.js + Carbon)  --/api/*-->  Next.js rewrite  -->  server.js (node:http)  -->  PostgreSQL
                                                                        |
-                                                                       +--> OpenRouter (streamed, temperature 0.3)
+                                                                       +--> OpenRouter or OpenAI (streamed, temperature 0.3)
 ```
 
 ### Screens
@@ -109,7 +109,7 @@ The approval payload records whether the facts were verified.
 
 ### Offline mode and fallbacks
 
-The app serves pre-written responses from `offline_responses` when there is no `OPENROUTER_API_KEY` or offline mode is toggled on.
+The app serves pre-written responses from `offline_responses` when there is no API key or offline mode is toggled on.
 They are rendered with the same template variables as the live prompt and streamed word by word.
 If a live call fails before the first token (network error, bad key, or no token within `FIRST_TOKEN_TIMEOUT_MS`), the same offline text is streamed instead and the status dot turns gray.
 Offline Q&A answers are built from the best matching knowledge base section.
@@ -132,12 +132,21 @@ It slides every seeded date forward if the keynote happens days later, so "turne
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OPENROUTER_API_KEY` | empty | Empty means offline mode. |
+| `OPENROUTER_API_KEY` | empty | Key for OpenRouter. |
+| `OPENAI_API_KEY` | empty | Key for OpenAI. With neither key set, the app runs in offline mode. |
+| `LLM_PROVIDER` | empty | `openrouter` or `openai`. Empty uses whichever key is set, and OpenRouter if both are. |
 | `OPENROUTER_MODEL` | `google/gemini-3.1-flash-lite` | Any OpenRouter model id. |
+| `OPENAI_MODEL` | `gpt-4.1-mini` | Any OpenAI chat model, without the `openai/` prefix. |
 | `DATABASE_URL` | `postgres://orchestrate_app:orchestrate_app@localhost:5432/orchestrate` | |
 | `API_PORT` | `3001` | |
 | `FIRST_TOKEN_TIMEOUT_MS` | `12000` | Falls back to offline after this long with no token. |
 | `OPENROUTER_BASE_URL` | `https://openrouter.ai/api/v1` | For a proxy or gateway. |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | For a proxy or gateway. |
+| `OPENAI_REASONING_EFFORT` | `low` | Used only by reasoning models (`o3`, `o4-mini`, `gpt-5`, ...). |
+
+Reasoning models do not accept a custom temperature, so they run at their default and are slower to the first token.
+For a live demo, a regular chat model such as `gpt-4.1-mini` is the safer choice.
+If you do use one, consider raising `FIRST_TOKEN_TIMEOUT_MS`.
 
 `web/.env` (optional, see `web/.env.example`): `API_URL`, default `http://localhost:3001`.
 

@@ -2,7 +2,7 @@
 
 // Orchestrate keynote demo: API server.
 // Node 18+, node:http + built-in fetch. The only dependency is `pg`.
-// The Next.js frontend in web/ proxies /api/* here, so the OpenRouter key never reaches the browser.
+// The Next.js frontend in web/ proxies /api/* here, so the LLM API key never reaches the browser.
 
 const http = require('node:http');
 const fs = require('node:fs');
@@ -27,9 +27,56 @@ function loadEnvFile(file) {
 loadEnvFile(path.join(__dirname, '.env'));
 
 const PORT = Number(process.env.API_PORT) || 3001;
-const OPENROUTER_API_KEY = (process.env.OPENROUTER_API_KEY || '').trim();
-const OPENROUTER_MODEL = (process.env.OPENROUTER_MODEL || '').trim() || 'google/gemini-3.1-flash-lite';
-const OPENROUTER_BASE_URL = (process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
+const env = (name, fallback = '') => (process.env[name] || '').trim() || fallback;
+
+// Both providers speak the OpenAI Chat Completions protocol; they differ in defaults,
+// headers and how output length is capped.
+const PROVIDERS = {
+  openrouter: {
+    name: 'OpenRouter',
+    keyVar: 'OPENROUTER_API_KEY',
+    apiKey: env('OPENROUTER_API_KEY'),
+    model: env('OPENROUTER_MODEL', 'google/gemini-3.1-flash-lite'),
+    baseUrl: env('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1').replace(/\/+$/, ''),
+    headers: { 'HTTP-Referer': 'http://localhost', 'X-Title': 'Orchestrate keynote demo' },
+    params: ({ temperature, maxTokens }) => ({ temperature, max_tokens: maxTokens }),
+  },
+  openai: {
+    name: 'OpenAI',
+    keyVar: 'OPENAI_API_KEY',
+    apiKey: env('OPENAI_API_KEY'),
+    model: env('OPENAI_MODEL', 'gpt-4.1-mini'),
+    baseUrl: env('OPENAI_BASE_URL', 'https://api.openai.com/v1').replace(/\/+$/, ''),
+    headers: {},
+    params: openAIParams,
+  },
+};
+
+// Reasoning models (o1, o3, o4-mini, gpt-5, ...) reject a custom temperature and count
+// their hidden reasoning against the output cap, so they get headroom on top of the
+// visible-text budget. The gpt-5 "-chat" variants are regular chat models.
+const OPENAI_REASONING_EFFORT = env('OPENAI_REASONING_EFFORT', 'low');
+const REASONING_TOKEN_HEADROOM = 4000;
+function isOpenAIReasoningModel(model) {
+  return /^(o\d|gpt-5)/.test(model) && !/-chat/.test(model);
+}
+function openAIParams({ temperature, maxTokens }) {
+  if (!isOpenAIReasoningModel(PROVIDERS.openai.model)) return { temperature, max_completion_tokens: maxTokens };
+  return { reasoning_effort: OPENAI_REASONING_EFFORT, max_completion_tokens: maxTokens + REASONING_TOKEN_HEADROOM };
+}
+
+// LLM_PROVIDER picks one explicitly. Left empty, the provider whose key is set wins,
+// with OpenRouter first when both are.
+function resolveProvider() {
+  const choice = env('LLM_PROVIDER').toLowerCase();
+  if (choice) {
+    if (PROVIDERS[choice]) return PROVIDERS[choice];
+    console.error(`\nUnknown LLM_PROVIDER "${choice}" in .env. Use one of: ${Object.keys(PROVIDERS).join(', ')}.\n`);
+    process.exit(1);
+  }
+  return Object.values(PROVIDERS).find((p) => p.apiKey) || PROVIDERS.openrouter;
+}
+const LLM = resolveProvider();
 const DATABASE_URL = process.env.DATABASE_URL || 'postgres://orchestrate_app:orchestrate_app@localhost:5432/orchestrate';
 const FIRST_TOKEN_TIMEOUT_MS = Number(process.env.FIRST_TOKEN_TIMEOUT_MS) || 12000;
 const DRAFT_TEMPERATURE = 0.3;
@@ -138,14 +185,15 @@ async function saveState(key, value) {
   );
 }
 function isOffline() {
-  return state.forcedOffline || !OPENROUTER_API_KEY;
+  return state.forcedOffline || !LLM.apiKey;
 }
 function modeInfo() {
   return {
     offline: isOffline(),
     forced: state.forcedOffline,
-    hasKey: Boolean(OPENROUTER_API_KEY),
-    model: OPENROUTER_MODEL,
+    hasKey: Boolean(LLM.apiKey),
+    provider: LLM.name,
+    model: LLM.model,
   };
 }
 
@@ -672,24 +720,23 @@ async function searchKnowledge(industryId, text, limit = 3) {
 }
 
 // ---------------------------------------------------------------------------
-// LLM (OpenRouter) streaming with an offline safety net
+// LLM streaming (OpenRouter or OpenAI) with an offline safety net
 // ---------------------------------------------------------------------------
 
-async function* openRouterStream(messages, { temperature, maxTokens, signal }) {
-  const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+async function* llmStream(messages, { temperature, maxTokens, signal }) {
+  const res = await fetch(`${LLM.baseUrl}/chat/completions`, {
     method: 'POST',
     signal,
     headers: {
-      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${LLM.apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'http://localhost',
-      'X-Title': 'Orchestrate keynote demo',
+      ...LLM.headers,
     },
-    body: JSON.stringify({ model: OPENROUTER_MODEL, messages, temperature, max_tokens: maxTokens, stream: true }),
+    body: JSON.stringify({ model: LLM.model, messages, ...LLM.params({ temperature, maxTokens }), stream: true }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`OpenRouter returned ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(`${LLM.name} returned ${res.status}: ${body.slice(0, 300)}`);
   }
   const decoder = new TextDecoder();
   let buffer = '';
@@ -708,7 +755,7 @@ async function* openRouterStream(messages, { temperature, maxTokens, signal }) {
       } catch {
         continue;
       }
-      if (json.error) throw new Error(json.error.message || 'OpenRouter stream error');
+      if (json.error) throw new Error(json.error.message || `${LLM.name} stream error`);
       const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
       if (delta) yield delta;
     }
@@ -745,8 +792,8 @@ async function generate({ messages, temperature, maxTokens, offlineText, send, i
   const timer = setTimeout(() => controller.abort(), FIRST_TOKEN_TIMEOUT_MS);
   let text = '';
   try {
-    send('meta', { source: 'live', model: OPENROUTER_MODEL });
-    for await (const delta of openRouterStream(messages, { temperature, maxTokens, signal: controller.signal })) {
+    send('meta', { source: 'live', model: LLM.model });
+    for await (const delta of llmStream(messages, { temperature, maxTokens, signal: controller.signal })) {
       clearTimeout(timer);
       text += delta;
       send('token', { t: delta });
@@ -1419,7 +1466,7 @@ async function main() {
   }
   server.listen(PORT, () => {
     console.log(`Orchestrate API listening on http://localhost:${PORT} (open the Next.js app at http://localhost:${process.env.WEB_PORT || 3000})`);
-    console.log(`  LLM: ${OPENROUTER_API_KEY ? `live via OpenRouter (${OPENROUTER_MODEL})` : 'no OPENROUTER_API_KEY, serving offline responses'}`);
+    console.log(`  LLM: ${LLM.apiKey ? `live via ${LLM.name} (${LLM.model})` : `no ${LLM.keyVar}, serving offline responses`}`);
     console.log(`  Presenter keys: Shift+I industry, Shift+O offline toggle, Shift+R reset`);
   });
 }

@@ -317,7 +317,7 @@ export default function App() {
   const offline = state.mode.offline || fallbackOffline;
   const statusTitle = offline
     ? `Offline${state.mode.forced ? ' (toggled)' : !state.mode.hasKey ? ' (no API key)' : fallbackOffline ? ' (live model unreachable)' : ''}`
-    : `Live: ${state.mode.model}`;
+    : `Live: ${state.mode.model} via ${state.mode.provider}`;
   const activeChat = state.chats.find((c) => c.id === chatId);
   const recent = state.chats.filter((c) => c.id !== chatId).slice(0, 8);
   const initials = state.user ? state.user.name.split(' ').map((p) => p[0]).slice(0, 2).join('') : '';

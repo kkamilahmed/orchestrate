@@ -16,7 +16,7 @@ export type AppState = {
   industry: Required<Industry>;
   industries: Industry[];
   user: { name: string; first_name: string; role: string; email: string } | null;
-  mode: { offline: boolean; forced: boolean; hasKey: boolean; model: string };
+  mode: { offline: boolean; forced: boolean; hasKey: boolean; provider: string; model: string };
   signals: Signal[];
   suggestions: { id: number; title: string; prompt: string; icon: string }[];
   assistants: Assistant[];
