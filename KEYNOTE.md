@@ -127,16 +127,6 @@ The answer cites the handbook section it came from, as a blue tag and a sources 
 | The live model wanders off topic | Press `Regenerate`, or `Shift+O` for the pre-approved offline draft. |
 | Presenting to a different audience | `Shift+I` switches to Banking, Healthcare, Retail, HR, Real estate, Manufacturing or Supply chain. Every industry has the same flow shape. |
 
-## Supply chain variant (Shift+I, 8)
+## Supply chain
 
-Persona: **Paul Zikopoulos**, Supply Chain Operations Manager at **Pacific Crest Distribution**.
-The same five minutes, with one container instead of one client.
-
-1. **Open on the signals.** One inbound shipment held at the Port of Los Angeles, three customer orders at risk, two supplier exceptions.
-2. **Click "Check overnight issues"** (or the first signal). The agent steps tell the story: the container is held after a local labour incident with no clearance estimate; the Reno DC holds 4,800 units against a 3,360-unit forecast, so 30% of that stock is excess because demand is lagging; the LTL quote is 20% below the typical lane rate; so it recommends moving 25% of Reno stock, 1,200 units, to the Inland Empire warehouse.
-3. **Select the container, Continue.** The review card locks the stock, forecast, percentages, pallets and the freight numbers. Point out that the LTL price check happened before the transfer was proposed.
-4. **Generate draft.** A transfer order to the Reno DC streams in. Edit "20%" to "15%" to show the fact check catch it, then change it back (30% and 25% are real facts too, so the check would accept those).
-5. **Create transfer order.** It is logged to the WMS, an LTL booking ticket opens with Transportation, and a follow-up task lands two days out.
-6. **Resolve the at-risk orders** from the second signal: two orders ship complete with next-day delivery at no charge, Harbor Lane gets 200 of 900 units and two options for the balance.
-7. **Review the supplier exceptions** from the third signal: Northwind gets an exception notice for a 240-carton short shipment, Sierra meets the threshold for a corrective action request (second exception in 30 days, 71% on time against a 95% SLA).
-8. **Go off-script:** "How much stock can we transfer between distribution centers?" is answered from the playbook, with the 25% rule cited.
+The supply chain walkthrough (`Shift+I`, then `8`) has its own script: [KEYNOTE-SUPPLY-CHAIN.md](KEYNOTE-SUPPLY-CHAIN.md).

@@ -8,7 +8,7 @@ It surfaces the right moment from business data (a life event, a renewal, a risk
 - **Database:** PostgreSQL 16. All data lives there: industries, branding, users, records, signals, flows, prompt templates, knowledge base, offline responses and activity.
 - **LLM:** OpenRouter or OpenAI, proxied through the API and streamed to the browser over SSE. The key never reaches the browser.
 
-The presenter walkthrough is in [KEYNOTE.md](KEYNOTE.md).
+The presenter walkthroughs are in [KEYNOTE.md](KEYNOTE.md) (insurance) and [KEYNOTE-SUPPLY-CHAIN.md](KEYNOTE-SUPPLY-CHAIN.md) (supply chain).
 
 ## Setup
 
@@ -163,7 +163,8 @@ web/
   components/         App shell, Home, AgentSteps, RecordsTable, ReviewCard, DraftsCard, GuidedFlow, ActivityPanel, IndustryModal
   lib/                API client (SSE), types, markdown, icon map
   public/carbon/      Carbon v11 compiled CSS + IBM Plex fonts (offline-safe)
-KEYNOTE.md            5-minute insurance walkthrough, plus the supply chain storyline
+KEYNOTE.md            5-minute insurance walkthrough
+KEYNOTE-SUPPLY-CHAIN.md  6-minute supply chain walkthrough
 ```
 
 ## Data model
