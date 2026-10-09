@@ -65,7 +65,7 @@ Click an empty area first if you have just typed something.
 
 | Key | Action |
 |---|---|
-| `Shift+I` | Industry switcher (then `1`-`7`). Changes company name, logo text, persona, data, signals and flows. |
+| `Shift+I` | Industry switcher (then `1`-`8`). Changes company name, logo text, persona, data, signals and flows. |
 | `Shift+O` | Toggle offline mode. |
 | `Shift+R` | Reset the demo: deletes the activity, tasks and chats created during the session and returns to the home screen. Seeded history is kept. |
 
@@ -85,6 +85,7 @@ Browser (Next.js + Carbon)  --/api/*-->  Next.js rewrite  -->  server.js (node:h
 ### Screens
 
 1. **Today's signals** (home): the persona is greeted by name, and 3-5 signals are shown with counts computed live from the database, plus 3 suggested actions and the chat input.
+Once every record behind a signal has been actioned in this session, the signal moves to a "Done today" row below the grid, where it stays clickable. A reset brings it back.
 2. **Side nav:** new chat, the active chat and recent chats (stored in `chats` and `chat_messages`), and the assistants (flows).
 3. **Guided flows**, as cards inside the chat:
    1. Agent steps with checkmarks. Their numbers are the real query results.
@@ -154,7 +155,7 @@ If you do use one, consider raising `FIRST_TOKEN_TIMEOUT_MS`.
 
 ```
 schema.sql            tables, least-privilege role, refresh_demo_dates()
-seed.sql              7 industries of demo data
+seed.sql              8 industries of demo data
 docker-compose.yml    Postgres 16, loads schema.sql + seed.sql on first start
 server.js             API: state, signals, flows, drafting, fact check, chat, Q&A, activity
 web/
@@ -162,7 +163,7 @@ web/
   components/         App shell, Home, AgentSteps, RecordsTable, ReviewCard, DraftsCard, GuidedFlow, ActivityPanel, IndustryModal
   lib/                API client (SSE), types, markdown, icon map
   public/carbon/      Carbon v11 compiled CSS + IBM Plex fonts (offline-safe)
-KEYNOTE.md            5-minute insurance walkthrough
+KEYNOTE.md            5-minute insurance walkthrough, plus the supply chain storyline
 ```
 
 ## Data model
@@ -232,12 +233,13 @@ Clicking a signal runs its flow with the signal's query, so the table always mat
 - `contact_field` is `email` or `phone`.
 - `draft_mode` is `per_record` or `combined`.
 In `combined` mode, `list_template` is rendered once per selected record into `{{records_list}}`.
-- `content_type` is Email, SMS, Work order, Portal message or Handover summary.
+- `content_type` is Email, SMS, Work order, Transfer order, Portal message or Handover summary.
 - `facts[].kind` is `percent`, `money`, `date`, `age`, or `quantity` (which needs a `unit`, such as "units" or "mg").
 - `approve.follow_up` is `{"weekday": 1-7}`, `{"business_days": n}` or `{"days": n}`.
 The presenter can override it on the review card.
 - `approve.ticket` is optional.
 It also logs a `ticket_opened` entry and exposes `{{ticket_id}}`.
+- `agent_steps` can use `{{count}}`, `{{s}}`, `{{record_noun}}`, `{{eligible_count}}`, `{{product}}`, `{{discount_pct}}` and any attribute of the first record the query returns (numbers are formatted), which lets a signal about one thing, such as a held shipment, quote its own stock and forecast figures.
 - For `qa` flows, `steps` only needs `agent_steps`, which can use `{{count}}` and `{{top_section}}`.
 
 ### Template variables

@@ -18,7 +18,8 @@ INSERT INTO industries (id, slug, name, company_name, logo_text, record_noun, so
   (4, 'retail',        'Retail',            'Kestrel & Pine Outfitters',       'Kestrel & Pine','customers', 4),
   (5, 'hr',            'Human resources',   'Brightline Technologies',         'Brightline',    'employees', 5),
   (6, 'real-estate',   'Real estate',       'Cedar & Stone Realty',            'Cedar & Stone', 'contacts',  6),
-  (7, 'manufacturing', 'Manufacturing',     'Ironbridge Precision Manufacturing', 'Ironbridge', 'items',     7);
+  (7, 'manufacturing', 'Manufacturing',     'Ironbridge Precision Manufacturing', 'Ironbridge', 'items',     7),
+  (8, 'supply-chain',  'Supply chain',      'Pacific Crest Distribution',      'Pacific Crest', 'shipments', 8);
 
 INSERT INTO app_state (key, value) VALUES ('active_industry', 'insurance'), ('offline_mode', 'false');
 -- ===========================================================================
@@ -2073,6 +2074,353 @@ INSERT INTO activity_log (industry_id, record_id, flow_id, action_type, payload,
 INSERT INTO tasks (record_id, title, due_date, status, is_seed) VALUES
   (703, 'Chase bar-stock supplier for a confirmed ship date on PO-58817', CURRENT_DATE + 1, 'open', TRUE),
   (706, 'Review Line 2 scrap rate with Quality', CURRENT_DATE - 1, 'done', TRUE);
+-- ===========================================================================
+-- 8. Supply chain - Pacific Crest Distribution
+-- Story: a container is held at the Port of Los Angeles (local labour incident, no
+-- clearance estimate). The Reno DC carries 30% excess stock of the same SKU because
+-- regional demand is lagging, an LTL quote comes in 20% below the lane's typical rate,
+-- so 25% of Reno stock transfers to the Inland Empire warehouse. The orders promised
+-- from the container are then resolved, and two supplier exceptions are reviewed.
+-- ===========================================================================
+
+INSERT INTO app_users (industry_id, name, role, email) VALUES
+  (8, 'Paul Zikopoulos', 'Supply Chain Operations Manager', 'paul.zikopoulos@pacificcrest.example');
+
+INSERT INTO records (id, industry_id, name, email, phone, record_type, attributes) VALUES
+  (801, 8, 'Container MSCU 884213-7 (PO-77410)', 'ie.inbound@pacificcrest.example', '(555) 018-1140', 'shipment',
+   $j${"shipment_id":"SHP-20481","po_number":"PO-77410","container":"MSCU 884213-7",
+     "sku":"PC-CM-1200","item":"Summit 12-cup coffee makers","quantity":3600,
+     "carrier":"Pacific Line (ocean)","port":"Port of Los Angeles","terminal":"Pier 400 terminal",
+     "hold_reason":"Local labour incident at the terminal; the port has not given a clearance estimate",
+     "destination":"Inland Empire warehouse (Ontario, CA)",
+     "source_dc":"Reno distribution center","dc_on_hand":4800,"forecast_units":3360,
+     "excess_pct":30,"excess_units":1440,"transfer_pct":25,"transfer_units":1200,
+     "pallets":10,"units_per_pallet":120,"transit_days":2,
+     "orders_due_count":3,"orders_due_units":1900}$j$),
+  (802, 8, 'Container TGHU 551902-4 (PO-77455)', 'ie.inbound@pacificcrest.example', '(555) 018-1140', 'shipment',
+   $j${"shipment_id":"SHP-20497","po_number":"PO-77455","container":"TGHU 551902-4",
+     "sku":"PC-CM-1200","item":"Summit 12-cup coffee makers","quantity":2400,
+     "carrier":"Pacific Line (ocean)","port":"Port of Long Beach","status":"On schedule",
+     "destination":"Inland Empire warehouse (Ontario, CA)"}$j$),
+  (803, 8, 'Reno distribution center', 'reno.dc@pacificcrest.example', '(555) 018-2201', 'distribution_center',
+   $j${"site_code":"RNO-1","region":"Mountain West","sku":"PC-CM-1200","item":"Summit 12-cup coffee makers",
+     "on_hand":4800,"forecast_units":3360,"excess_pct":30,"excess_units":1440,"weekly_sell_through":840}$j$),
+  (804, 8, 'Inland Empire warehouse', 'ie.inbound@pacificcrest.example', '(555) 018-1140', 'warehouse',
+   $j${"site_code":"ONT-1","region":"Southern California","sku":"PC-CM-1200","item":"Summit 12-cup coffee makers",
+     "on_hand":0,"forecast_units":2900,"orders_due_units":1900,"orders_due_count":3}$j$),
+  (805, 8, 'Westfield Home Goods', 'priya.nair@example.com', '(555) 018-3310', 'order',
+   $j${"first_name":"Priya","contact_name":"Priya Nair","order_number":"SO-118204","account_tier":"Key account",
+     "sku":"PC-CM-1200","item":"Summit 12-cup coffee makers","quantity":600,
+     "ship_from":"Inland Empire warehouse","transfer_units":1200,"covered_units":600,"shortfall_units":0}$j$),
+  (806, 8, 'Brightwater Appliance Outlet', 'marcus.hale@example.com', '(555) 018-3425', 'order',
+   $j${"first_name":"Marcus","contact_name":"Marcus Hale","order_number":"SO-118231","account_tier":"Standard",
+     "sku":"PC-CM-1200","item":"Summit 12-cup coffee makers","quantity":400,
+     "ship_from":"Inland Empire warehouse","transfer_units":1200,"covered_units":400,"shortfall_units":0}$j$),
+  (807, 8, 'Harbor Lane Department Stores', 'elena.costa@example.com', '(555) 018-3577', 'order',
+   $j${"first_name":"Elena","contact_name":"Elena Costa","order_number":"SO-118257","account_tier":"Key account",
+     "sku":"PC-CM-1200","item":"Summit 12-cup coffee makers","quantity":900,
+     "ship_from":"Inland Empire warehouse","transfer_units":1200,"covered_units":200,"shortfall_units":700}$j$),
+  (808, 8, 'Northwind Packaging Co.', 'dana.lindqvist@example.com', '(555) 018-4418', 'supplier',
+   $j${"first_name":"Dana","contact_name":"Dana Lindqvist","supplier_id":"SUP-2081","po_number":"PO-77388",
+     "item":"printed retail cartons for PC-CM-1200","exception_type":"ASN quantity mismatch",
+     "asn_quantity":2400,"received_quantity":2160,"short_units":240,"short_pct":10,
+     "exception_count_30d":1,"on_time_pct":92}$j$),
+  (809, 8, 'Sierra Component Works', 'tomas.rivera@example.com', '(555) 018-4530', 'supplier',
+   $j${"first_name":"Tomas","contact_name":"Tomas Rivera","supplier_id":"SUP-2114","po_number":"PO-77402",
+     "item":"thermal carafe assemblies (5,000 units)","exception_type":"Missed delivery window",
+     "late_days":4,"exception_count_30d":2,"on_time_pct":71,"sla_pct":95}$j$);
+
+INSERT INTO life_events (record_id, event_type, description, event_date) VALUES
+  (801, 'port_hold',          'Held at the Port of Los Angeles after a local labour incident at the terminal; no clearance estimate', CURRENT_DATE),
+  (801, 'eta_original',       'Original ETA at the Inland Empire warehouse for PO-77410', CURRENT_DATE + 1),
+  (801, 'transfer_eta',       'Earliest LTL arrival at the Inland Empire warehouse if the Reno pickup is booked today', CURRENT_DATE + 2),
+  (802, 'inbound_eta',        'On schedule: PO-77455 arrives at the Inland Empire warehouse via the Port of Long Beach', CURRENT_DATE + 9),
+  (803, 'excess_inventory',   'Holds 4,800 units of PC-CM-1200 against a 4-week forecast of 3,360; regional demand is lagging (30% excess)', CURRENT_DATE),
+  (804, 'stock_cover_low',    '0 units of PC-CM-1200 on hand against 1,900 units on orders due this week', CURRENT_DATE),
+  (805, 'order_at_risk',      'SO-118204 (600 units) was promised from the held container; no stock at the Inland Empire warehouse', CURRENT_DATE),
+  (805, 'promised',           'Promised ship date for SO-118204', CURRENT_DATE + 2),
+  (806, 'order_at_risk',      'SO-118231 (400 units) was promised from the held container; no stock at the Inland Empire warehouse', CURRENT_DATE),
+  (806, 'promised',           'Promised ship date for SO-118231', CURRENT_DATE + 3),
+  (807, 'order_at_risk',      'SO-118257 (900 units) was promised from the held container; only 200 units can be allocated from the Reno transfer', CURRENT_DATE),
+  (807, 'promised',           'Promised ship date for SO-118257', CURRENT_DATE + 4),
+  (807, 'balance',            'Balance of SO-118257 ships from the next container (PO-77455)', CURRENT_DATE + 10),
+  (808, 'supplier_exception', 'ASN for PO-77388 listed 2,400 cartons; 2,160 received, 240 short', CURRENT_DATE - 1),
+  (808, 'received',           'PO-77388 received at the Inland Empire warehouse', CURRENT_DATE - 1),
+  (809, 'supplier_exception', 'PO-77402 arrived 4 days after its delivery window; second late delivery in 30 days', CURRENT_DATE),
+  (809, 'due',                'Delivery window for PO-77402 closed', CURRENT_DATE - 4),
+  (809, 'received',           'PO-77402 received at the Reno distribution center', CURRENT_DATE);
+
+INSERT INTO products (id, industry_id, name, description, price, price_unit, discount_pct, eligibility_rules) VALUES
+  (81, 8, 'LTL spot quote, Reno to Inland Empire',
+   'Less-than-truckload spot quote from Cascade Freight Lines for 10 pallets on the Reno to Ontario lane, liftgate at both ends, 2-day transit with tracking. The typical rate on this lane is $3,900 per shipment.',
+   3900.00, '', 20, '{}'),
+  (82, 8, 'Next-day delivery at no charge',
+   'We upgrade the final delivery to next-day carrier service at no charge to the customer (normally $450 per order), so the order still arrives on the promised date from the alternate warehouse.',
+   0.00, '', 0,
+   '{"all":[{"attr":"shortfall_units","op":"=","value":0,"label":"Order fully covered by the Reno transfer"}]}'),
+  (83, 8, 'Corrective action request (CAR)',
+   'A formal corrective action request under the supply agreement: the supplier returns a root-cause analysis and a corrective action plan within 5 business days, and the exception counts toward the quarterly scorecard review.',
+   0.00, '', 0,
+   '{"all":[{"attr":"exception_count_30d","op":">=","value":2,"label":"2 or more exceptions in 30 days"}]}');
+
+INSERT INTO query_definitions (key, industry_id, description, event_types, days_from, days_to) VALUES
+  ('sc_port_holds',          8, 'Inbound shipments held at a port in the last 7 days', '{port_hold}', -7, 0),
+  ('sc_at_risk_orders',      8, 'Customer orders at risk in the last 7 days', '{order_at_risk}', -7, 0),
+  ('sc_supplier_exceptions', 8, 'Supplier exceptions raised in the last 7 days', '{supplier_exception}', -7, 0);
+
+INSERT INTO flows (id, industry_id, slug, title, description, flow_type, keywords, icon, product_id, sort_order, steps) VALUES
+  (81, 8, 'held-shipment-transfer', 'Held shipment: inventory transfer',
+   'When a shipment is stuck, find the stock elsewhere, price the freight and draft the transfer order.',
+   'outreach', '{overnight,overnight issues,overnight exceptions,port hold,port holds,held shipment,held shipments,stuck,stuck in port,in port,container,containers,labour,labor,customs,reroute,stock levels,stock level,inventory levels,find inventory,transfer inventory,inventory transfer,transfer stock,transfer order,ltl,less than truckload,freight quote,freight cost}',
+   'delivery-truck', 81, 1,
+   '{"query":"sc_port_holds",
+     "agent_steps":["Checking overnight exceptions across inbound shipments, customer orders and suppliers",
+                    "Found {{count}} shipment{{s}} held at the {{port}} with no clearance estimate (local labour incident at the terminal)",
+                    "Checking stock levels for {{sku}} at the other distribution centers",
+                    "Found {{dc_on_hand}} units at the {{source_dc}} against a 4-week regional forecast of {{forecast_units}} units: demand is lagging, {{excess_pct}}% of that stock is excess",
+                    "Pricing a less-than-truckload (LTL) move from Reno to the Inland Empire warehouse: today''s quote is {{discount_pct}}% below the typical lane rate",
+                    "Recommending a transfer of {{transfer_pct}}% of Reno stock ({{transfer_units}} units) to cover the orders due this week"],
+     "table_title":"Shipments held in port",
+     "select_hint":"Select the held shipments to cover with a transfer from another distribution center.",
+     "change_label":"Exception",
+     "contact_field":"email",
+     "draft_mode":"per_record",
+     "content_type":"Transfer order",
+     "to":"reno.dc@pacificcrest.example",
+     "cc":"{{email}}",
+     "subject":"Transfer order: {{transfer_units}} units of {{sku}} from the Reno DC to the Inland Empire warehouse (LTL)",
+     "facts":[{"key":"quantity","label":"Units held in port","kind":"quantity","unit":"units"},
+              {"key":"event_date","label":"Held since","kind":"date"},
+              {"key":"date_eta_original","label":"Original warehouse ETA","kind":"date"},
+              {"key":"dc_on_hand","label":"Reno DC on hand","kind":"quantity","unit":"units"},
+              {"key":"forecast_units","label":"Reno 4-week forecast","kind":"quantity","unit":"units"},
+              {"key":"excess_pct","label":"Excess vs forecast","kind":"percent"},
+              {"key":"excess_units","label":"Excess units","kind":"quantity","unit":"units"},
+              {"key":"transfer_pct","label":"Transfer share","kind":"percent"},
+              {"key":"transfer_units","label":"Units to transfer","kind":"quantity","unit":"units"},
+              {"key":"pallets","label":"Pallets","kind":"quantity","unit":"pallets"},
+              {"key":"orders_due_units","label":"On orders due this week","kind":"quantity","unit":"units"},
+              {"key":"price","label":"Typical LTL lane rate","kind":"money"},
+              {"key":"discount_pct","label":"LTL quote below typical","kind":"percent"},
+              {"key":"discounted_price","label":"LTL quote","kind":"money"},
+              {"key":"savings","label":"Freight saving","kind":"money"},
+              {"key":"date_transfer_eta","label":"Earliest arrival","kind":"date"}],
+     "approve":{"label":"Create transfer order","action_type":"transfer_created","log_label":"Logged to the WMS",
+                "task_title":"Confirm {{transfer_units}} units of {{sku}} arrived at the Inland Empire warehouse",
+                "follow_up":{"business_days":2},
+                "confirmation":"Transfer order sent to the Reno DC for {{transfer_units}} units of {{sku}}. Logged to the WMS. LTL booking {{ticket_id}} opened with Transportation. Follow-up task created for {{follow_up_day}}.",
+                "ticket":{"title":"Book LTL pickup at the Reno DC: {{pallets}} pallets of {{sku}} to the Inland Empire warehouse at {{discounted_price}}","queue":"Transportation"}}}'),
+  (82, 8, 'at-risk-orders', 'At-risk order updates',
+   'Tell customers whose orders depend on the held shipment what ships, from where and when.',
+   'outreach', '{at risk,at risk orders,at risk order,orders at risk,risk orders,resolve orders,customer orders,open orders,promise date,promise dates,promised orders,late orders,customer update,customer updates,ship date}',
+   'shopping-cart', 82, 2,
+   '{"query":"sc_at_risk_orders",
+     "agent_steps":["Checking open customer orders against the held container",
+                    "Found {{count}} order{{s}} promised this week from PO-77410 stock",
+                    "Allocating the {{transfer_units}} units transferring from the Reno DC, earliest promise date first",
+                    "{{eligible_count}} of {{count}} ship complete and qualify for {{product}}"],
+     "table_title":"Customer orders at risk",
+     "select_hint":"Select the customers who should get an update.",
+     "change_label":"Risk",
+     "contact_field":"email",
+     "draft_mode":"per_record",
+     "content_type":"Email",
+     "to":"{{email}}",
+     "cc":"{{sender_email}}",
+     "subject":"Your order {{order_number}}: shipping plan",
+     "facts":[{"key":"quantity","label":"Order quantity","kind":"quantity","unit":"units"},
+              {"key":"covered_units","label":"Allocated from the transfer","kind":"quantity","unit":"units"},
+              {"key":"shortfall_units","label":"Shortfall","kind":"quantity","unit":"units"},
+              {"key":"date_promised","label":"Promised ship date","kind":"date"},
+              {"key":"date_balance","label":"Balance ships","kind":"date"}],
+     "approve":{"label":"Send update","action_type":"email_sent","log_label":"Logged to the order",
+                "task_title":"Confirm {{order_number}} shipped to {{name}}",
+                "follow_up":{"business_days":2},
+                "confirmation":"Update sent to {{contact_name}} at {{name}}. Logged to the order. Follow-up task created for {{follow_up_day}}."}}'),
+  (83, 8, 'supplier-exceptions', 'Supplier exception review',
+   'Review each supplier exception and send the notice, escalating to a corrective action request when the pattern calls for it.',
+   'outreach', '{supplier,suppliers,supplier exception,supplier exceptions,vendor exception,vendor exceptions,asn,asn mismatch,short shipment,short shipped,late delivery,late deliveries,missed delivery,corrective action,scorecard,review supplier,review suppliers}',
+   'industry', 83, 3,
+   '{"query":"sc_supplier_exceptions",
+     "agent_steps":["Pulling supplier exceptions from receiving and the ASN feed",
+                    "Found {{count}} exception{{s}} in the last 7 days",
+                    "Comparing each supplier''s 30-day record with the supply agreement SLA",
+                    "{{eligible_count}} of {{count}} meet the threshold for a {{product}}"],
+     "table_title":"Supplier exceptions",
+     "select_hint":"Select the suppliers to notify.",
+     "change_label":"Exception",
+     "contact_field":"email",
+     "draft_mode":"per_record",
+     "content_type":"Email",
+     "to":"{{email}}",
+     "cc":"procurement@pacificcrest.example",
+     "subject":"Supplier exception on {{po_number}}: {{exception_type}}",
+     "facts":[{"key":"asn_quantity","label":"ASN quantity","kind":"quantity","unit":"cartons"},
+              {"key":"received_quantity","label":"Received","kind":"quantity","unit":"cartons"},
+              {"key":"short_units","label":"Short","kind":"quantity","unit":"cartons"},
+              {"key":"short_pct","label":"Short","kind":"percent"},
+              {"key":"late_days","label":"Days late","kind":"quantity","unit":"days"},
+              {"key":"on_time_pct","label":"On-time rate (30 days)","kind":"percent"},
+              {"key":"sla_pct","label":"SLA","kind":"percent"},
+              {"key":"date_due","label":"Delivery window closed","kind":"date"},
+              {"key":"date_received","label":"Received on","kind":"date"}],
+     "approve":{"label":"Send notice","action_type":"email_sent","log_label":"Logged to the supplier scorecard",
+                "task_title":"Check {{name}} responded on {{po_number}}",
+                "follow_up":{"business_days":1},
+                "confirmation":"Exception notice sent to {{contact_name}} at {{name}}. Logged to the supplier scorecard. Follow-up task created for {{follow_up_day}}."}}'),
+  (84, 8, 'playbook-qa', 'Ask the logistics playbook',
+   'Answers from the Pacific Crest logistics playbook, with the section it came from.',
+   'qa', '{playbook,policy,policies,procedure,procedures,threshold,thresholds,rule,rules,sla,slas,safety stock,what does,what is our,how do we,how much,how many,how long,when do we,when can we,can we,are we allowed,who approves,approval}',
+   'book', NULL, 4,
+   '{"agent_steps":["Searching the Pacific Crest logistics playbook",
+                    "Found {{count}} relevant sections",
+                    "Reading \"{{top_section}}\"",
+                    "Writing an answer with citations"]}');
+
+INSERT INTO signals (id, industry_id, title, description, flow_id, severity, count_query, sort_order) VALUES
+  (81, 8, '{{count}} inbound shipment{{s}} held at the Port of Los Angeles',
+   'Local labour incident at the terminal, no clearance estimate. Orders due this week depend on it.', 81, 'high', 'sc_port_holds', 1),
+  (82, 8, '{{count}} customer order{{s}} at risk this week',
+   'Promised from the held container. The customers have not been told yet.', 82, 'high', 'sc_at_risk_orders', 2),
+  (83, 8, '{{count}} supplier exception{{s}} to review',
+   'A short shipment and a missed delivery window. Notices are due within 1 business day.', 83, 'medium', 'sc_supplier_exceptions', 3);
+
+INSERT INTO prompt_templates (flow_id, template_text) VALUES
+  (81, $t$Write a transfer order from {{sender}} ({{sender_role}}, {{company}}) to the Reno distribution center team, copying the Inland Empire inbound planner.
+
+Situation: {{name}}, {{quantity}} units of {{item}} ({{sku}}) for {{po_number}}, is held at the {{port}} ({{terminal}}). {{hold_reason}}. It was due at the {{destination}} on {{date_eta_original}}. Held since {{event_date}}.
+Stock check: the {{source_dc}} has {{dc_on_hand}} units of {{sku}} on hand against a 4-week regional forecast of {{forecast_units}} units. Demand is lagging, so {{excess_pct}}% of that stock ({{excess_units}} units) is excess.
+Freight: {{product}}. {{product_description}} Today's quote is {{discount_pct}}% below the typical rate of {{price}}: {{discounted_price}}, saving {{savings}}.
+Transfer: move {{transfer_pct}}% of Reno stock, {{transfer_units}} units on {{pallets}} pallets, by LTL to the {{destination}}, arriving {{date_transfer_eta}} if picked up today. Customer orders due this week total {{orders_due_units}} units; this transfer covers the first {{transfer_units}} of them, and the balance follows from the next container or when this one clears.
+
+Format it as a transfer order with short labeled sections (Reason, Stock check, Freight, Transfer, Next steps). Ask Reno to confirm the pickup today and send the tracking number. Under 180 words.$t$),
+  (82, $t$Write an honest, proactive email from {{sender}} ({{sender_role}}, {{company}}) to {{contact_name}} at {{name}} (address them as {{first_name}}).
+
+Order: {{order_number}}, {{quantity}} units of {{item}} ({{sku}}), promised to ship on {{date_promised}} from the {{ship_from}}.
+What happened: the container carrying this stock is held at the Port of Los Angeles after a local labour incident at the terminal, and the port has given no clearance estimate. {{event}} ({{event_date}}).
+Plan: we are transferring stock from our Reno distribution center to the {{ship_from}}, and {{covered_units}} of the {{quantity}} units are allocated to this order.
+{{#eligible}}Make-good: {{product}}. {{product_description}} The complete order still ships on {{date_promised}}.{{/eligible}}{{^eligible}}The remaining {{shortfall_units}} units ship from the next container on {{date_balance}}. This order does not qualify for {{product}} ({{eligibility_note}}), so do not offer it. Offer two choices: a partial shipment of {{covered_units}} units on {{date_promised}} with the balance on {{date_balance}}, or one complete delivery on {{date_balance}}.{{/eligible}}
+
+Apologize once without excuses, be specific about quantities and dates, and give a named contact. Under 160 words.$t$),
+  (83, $t$Write a firm but professional supplier exception notice from {{sender}} ({{sender_role}}, {{company}}) to {{contact_name}} at {{name}} (address them as {{first_name}}).
+
+Purchase order: {{po_number}}, {{item}}.
+Exception: {{exception_type}}. {{event}} (recorded {{event_date}}).
+{{#asn_quantity}}Details: the ASN listed {{asn_quantity}} cartons, {{received_quantity}} cartons were received on {{date_received}}, so {{short_units}} cartons ({{short_pct}}%) are short. This is the first exception in 30 days and the on-time rate is {{on_time_pct}}%.{{/asn_quantity}}{{#late_days}}Details: the delivery window closed on {{date_due}} and the goods were received on {{date_received}}, {{late_days}} days late. This is the second exception in 30 days. On-time delivery over the last 30 days is {{on_time_pct}}% against the {{sla_pct}}% SLA in the supply agreement.{{/late_days}}
+{{#eligible}}Escalation: {{product}}. {{product_description}}{{/eligible}}{{^eligible}}No corrective action request this time ({{eligibility_note}}). Ask for a corrected ASN and a confirmed ship date for the shortfall instead.{{/eligible}}
+
+State what happened with the exact figures, what you need from them and by when (a written response within 1 business day), and that the exception is recorded on their scorecard. Under 170 words.$t$);
+
+INSERT INTO offline_responses (industry_id, flow_id, kind, response_text) VALUES
+  (8, 81, 'draft', $t$TRANSFER ORDER: {{transfer_units}} units of {{sku}} ({{item}})
+From: {{source_dc}}
+To: {{destination}}
+Requested by: {{sender}}, {{sender_role}}
+
+Reason
+{{name}} with {{quantity}} units for {{po_number}} is held at the {{port}} ({{terminal}}). {{hold_reason}}. It was due at the warehouse on {{date_eta_original}}, and customer orders due this week total {{orders_due_units}} units.
+
+Stock check
+Reno has {{dc_on_hand}} units on hand against a 4-week regional forecast of {{forecast_units}} units. Demand is lagging, so {{excess_pct}}% of that stock ({{excess_units}} units) is excess to forecast.
+
+Freight
+{{product}}: {{discounted_price}}, {{discount_pct}}% below the typical lane rate of {{price}} (saving {{savings}}). 2-day transit with tracking.
+
+Transfer
+Move {{transfer_pct}}% of Reno stock: {{transfer_units}} units on {{pallets}} pallets, LTL, arriving {{date_transfer_eta}} if picked up today.
+
+Next steps
+1. Reno: confirm the pickup today and send the tracking number to the Inland Empire inbound planner.
+2. Transportation: book the quote before it expires.
+3. I will update the affected customers once the pickup is confirmed.
+
+{{sender}}
+{{sender_role}}, {{company}}$t$),
+  (8, 82, 'draft', $t$Hi {{first_name}},
+
+I want to give you an honest update on {{order_number}} for {{quantity}} units of {{item}}, which we promised to ship on {{date_promised}}. The container carrying that stock is held at the Port of Los Angeles after a local labour incident at the terminal, and the port has not given a clearance estimate.
+
+I'm sorry for the uncertainty. Here is the plan: we are transferring stock from our Reno distribution center to the {{ship_from}}, and {{covered_units}} of your {{quantity}} units are allocated to your order.{{#eligible}} Your complete order still ships on {{date_promised}}, and we are upgrading the final delivery to next-day carrier service at no charge (normally $450 per order), so it arrives on the date you planned for.{{/eligible}}{{^eligible}} The remaining {{shortfall_units}} units ship from the next container on {{date_balance}}. You can choose a partial shipment of {{covered_units}} units on {{date_promised}} with the balance on {{date_balance}}, or one complete delivery on {{date_balance}}. Tell me which works better for your stores.{{/eligible}}
+
+I'm your contact on this and will send tracking as soon as it ships.
+
+Best regards,
+{{sender}}
+{{sender_role}}, {{company}}$t$),
+  (8, 83, 'draft', $t$Hi {{first_name}},
+
+I'm writing to record a supplier exception on {{po_number}} ({{item}}): {{exception_type}}.
+
+{{#asn_quantity}}The ASN listed {{asn_quantity}} cartons. We received {{received_quantity}} cartons on {{date_received}}, so {{short_units}} cartons ({{short_pct}}%) are short. Your on-time rate over the last 30 days is {{on_time_pct}}%, and this is the first exception in that period, so no corrective action request is being raised. Please send a corrected ASN and a confirmed ship date for the {{short_units}} cartons.{{/asn_quantity}}{{#late_days}}The delivery window closed on {{date_due}} and the goods were received on {{date_received}}, {{late_days}} days late. This is the second exception in 30 days, and your on-time delivery over the last 30 days is {{on_time_pct}}% against the {{sla_pct}}% SLA in our supply agreement. We are therefore issuing a corrective action request: please return a root-cause analysis and a corrective action plan within 5 business days.{{/late_days}}
+
+I need a written response within 1 business day. The exception is recorded on your supplier scorecard, and I'm happy to talk it through if that helps.
+
+Regards,
+{{sender}}
+{{sender_role}}, {{company}}$t$);
+
+INSERT INTO offline_responses (industry_id, kind, match_keywords, response_text) VALUES
+  (8, 'chat', '{first today,prioritize,priority,priorities,tackle first,which exception,which issue,which problem,biggest risk}', $t$I'd start with the **held container**. Here's how I'd order today:
+
+1. **Container MSCU 884213-7 (PO-77410)** - 3,600 units of Summit 12-cup coffee makers held at the Port of Los Angeles after a local labour incident, with no clearance estimate. It was due at the Inland Empire warehouse tomorrow and 1,900 units on customer orders depend on it. The Reno DC holds 4,800 units against a 3,360-unit forecast, so a 1,200-unit LTL transfer covers this week.
+2. **Harbor Lane Department Stores** - SO-118257 (900 units) can only get 200 units from the transfer; Elena Costa needs the two options before her promised date.
+3. **Sierra Component Works** - PO-77402 arrived 4 days late, the second exception in 30 days, with on-time delivery at 71% against the 95% SLA. That meets the threshold for a corrective action request.
+
+Want me to start with the transfer order?$t$),
+  (8, 'chat', '{summary,summarize,overview,my day,this week,what happened}', $t$Here's the network at a glance, {{user_first}}:
+
+{{signals_summary}}
+
+The most urgent item is the container held at the Port of Los Angeles: three customer orders were promised from it, and the Reno DC has the excess stock to cover them. I can draft the transfer order, update the at-risk customers, send the supplier exception notices, or answer questions from the logistics playbook.$t$),
+  (8, 'chat', '{}', $t$Here's what I'm seeing across the network right now:
+
+{{signals_summary}}
+
+I can turn a held shipment into a transfer order, update customers whose orders are at risk, review supplier exceptions, or answer questions from the logistics playbook. What would you like to do next?$t$);
+
+INSERT INTO knowledge_base (industry_id, source, section_title, content) VALUES
+  (8, 'Pacific Crest Logistics Playbook', 'Overnight exception review (PB-O-001)',
+   'Every morning the operations manager reviews the exceptions raised overnight in three feeds: inbound shipments (port holds, customs holds, carrier delays), customer orders (promise dates at risk) and suppliers (ASN mismatches, short shipments, missed delivery windows). Work them in that order, because a held inbound shipment usually explains the at-risk orders. Each exception gets an owner and a next action before 10 am.'),
+  (8, 'Pacific Crest Logistics Playbook', 'Port and customs holds (PB-L-004)',
+   'When a container is held at a port with no clearance estimate, plan as if it will not arrive this week. Within 4 hours, check on-hand stock for the same SKUs at every other distribution center and the regional demand forecast at each. Notify the customers whose orders depend on the container within 1 business day. Do not pay for expedited drayage or a port appointment until the terminal has issued a clearance estimate.'),
+  (8, 'Pacific Crest Logistics Playbook', 'Inter-DC inventory transfers (PB-I-012)',
+   'A transfer from one distribution center to another is allowed when the source DC holds more than 20% above its 4-week regional forecast for the SKU. A single transfer may move up to 25% of the source DC''s on-hand stock without VP approval, and the source must keep at least its 4-week forecast on hand after the transfer. Transfers above 25% need VP Supply Chain approval. Every transfer order names the SKU, units, pallets, carrier, quote, pickup date and expected arrival, and is logged in the WMS.'),
+  (8, 'Pacific Crest Logistics Playbook', 'Demand forecast and excess stock (PB-I-003)',
+   'Each distribution center carries a rolling 4-week regional demand forecast per SKU, refreshed weekly from sell-through. Demand is "lagging" when sell-through runs below forecast for two consecutive weeks. A DC is flagged for excess stock when on-hand units exceed the 4-week forecast by 20% or more, and the excess is the first stock offered to any other site that is short.'),
+  (8, 'Pacific Crest Logistics Playbook', 'LTL versus full truckload (PB-T-007)',
+   'Shipments of up to 12 pallets or 10,000 lb move as less-than-truckload (LTL). Always get a spot quote and compare it with the lane''s typical rate: book the quote when it is at least 10% below typical, otherwise use the contracted carrier at the typical rate. Shipments above 12 pallets are compared against a full truckload rate, and above 20 pallets always move as a full truckload. Spot quotes expire the same business day, so book before 5 pm.'),
+  (8, 'Pacific Crest Logistics Playbook', 'At-risk order communication (PB-C-002)',
+   'When an order is at risk of missing its promised ship date, tell the customer within 1 business day, before they ask. Give the promised date, the units that will ship and when, and the date for any balance. When the full quantity can ship from an alternate site by the promised date, upgrade the final delivery to next-day service at no charge. When only part of the order can ship, offer a partial shipment and a single complete delivery and let the customer choose.'),
+  (8, 'Pacific Crest Logistics Playbook', 'Supplier exceptions and corrective action (PB-S-009)',
+   'A supplier exception is an ASN quantity mismatch of more than 2%, a delivery more than 2 days outside its window, or a quality rejection. Send the supplier an exception notice within 1 business day with the exact figures and ask for a written response within 1 business day. Every exception is recorded on the supplier scorecard. Two or more exceptions in 30 days, or on-time delivery below the 95% SLA, trigger a corrective action request (CAR): the supplier returns a root-cause analysis and a corrective action plan within 5 business days.'),
+  (8, 'Pacific Crest Logistics Playbook', 'Carrier booking and tracking (PB-T-011)',
+   'Transportation books the carrier the same day a transfer order is approved and confirms the pickup window with the source site. The source site sends the tracking number to the destination''s inbound planner, who adds the arrival to the receiving schedule. Liftgate service is requested at both ends unless both docks are confirmed. Any pickup that slips by more than one business day is escalated to the operations manager.');
+
+INSERT INTO suggestions (industry_id, title, prompt, icon, sort_order) VALUES
+  (8, 'Check overnight issues', 'What are the overnight issues?', 'time', 1),
+  (8, 'Plan my day', 'Which exception should I tackle first today?', 'chat', 2),
+  (8, 'Check the playbook', 'How much stock can we transfer between distribution centers?', 'book', 3);
+
+INSERT INTO chats (id, industry_id, title, is_seed, created_at, updated_at) VALUES
+  (801, 8, 'Reno DC excess stock', TRUE, now() - interval '1 day', now() - interval '1 day'),
+  (802, 8, 'Orders due from PO-77410', TRUE, now() - interval '2 days', now() - interval '2 days'),
+  (803, 8, 'LTL booking rule', TRUE, now() - interval '5 days', now() - interval '5 days');
+
+INSERT INTO chat_messages (chat_id, role, content, created_at) VALUES
+  (801, 'user', 'Is the Reno DC still over forecast on the coffee makers?', now() - interval '1 day'),
+  (801, 'assistant', 'Yes. The **Reno distribution center** holds 4,800 units of PC-CM-1200 against a 4-week regional forecast of 3,360 units, so 30% of that stock is excess. Sell-through is running at 840 units a week, below forecast, so demand is lagging. That excess is the first stock offered to any site that runs short.', now() - interval '1 day'),
+  (802, 'user', 'Which customer orders are waiting on PO-77410?', now() - interval '2 days'),
+  (802, 'assistant', 'Three orders at the Inland Empire warehouse, 1,900 units in total: **Westfield Home Goods** (SO-118204, 600 units), **Brightwater Appliance Outlet** (SO-118231, 400 units) and **Harbor Lane Department Stores** (SO-118257, 900 units). All three are promised this week and the warehouse has no stock of PC-CM-1200 on hand.', now() - interval '2 days'),
+  (803, 'user', 'When do we book an LTL spot quote instead of the contracted carrier?', now() - interval '5 days'),
+  (803, 'assistant', 'Book the spot quote when it is at least 10% below the lane''s typical rate; otherwise use the contracted carrier at the typical rate. Spot quotes expire the same business day, so book before 5 pm. *Source: Pacific Crest Logistics Playbook, "LTL versus full truckload (PB-T-007)".*', now() - interval '5 days');
+
+INSERT INTO activity_log (industry_id, record_id, flow_id, action_type, payload, is_seed, created_at) VALUES
+  (8, 808, 83, 'task_created', '{"title":"Ask Northwind Packaging for a corrected ASN on PO-77388","summary":"Internal task for Procurement"}', TRUE, now() - interval '1 day'),
+  (8, 804, 81, 'email_sent', '{"to":"ie.inbound@pacificcrest.example","subject":"Inbound schedule: PO-77455 on track via Long Beach","summary":"Weekly inbound schedule for the Inland Empire inbound planner"}', TRUE, now() - interval '2 days');
+
+INSERT INTO tasks (record_id, title, due_date, status, is_seed) VALUES
+  (808, 'Ask Northwind Packaging for a corrected ASN on PO-77388', CURRENT_DATE + 1, 'open', TRUE),
+  (803, 'Review the Reno 4-week forecast with Demand Planning', CURRENT_DATE - 2, 'done', TRUE);
 SELECT setval(pg_get_serial_sequence('industries','id'), (SELECT max(id) FROM industries));
 SELECT setval(pg_get_serial_sequence('records','id'), (SELECT max(id) FROM records));
 SELECT setval(pg_get_serial_sequence('products','id'), (SELECT max(id) FROM products));

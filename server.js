@@ -1009,7 +1009,14 @@ async function flowStartData(industry, flow, queryKey) {
   });
   const eligibleCount = records.filter((r) => r.eligible !== false).length;
   const pv = productVars(product, {});
+  // Agent steps may also quote the attributes of the first matching record (useful when a
+  // signal points at one thing, such as a single held shipment). Numbers are formatted.
+  const firstAttrs = {};
+  for (const [k, v] of Object.entries((rows[0] && rows[0].attributes) || {})) {
+    if (v !== null && typeof v !== 'object') firstAttrs[k] = typeof v === 'number' ? formatNumber(v) : v;
+  }
   const stepVars = {
+    ...firstAttrs,
     ...pluralVars(records.length),
     record_noun: industry.record_noun,
     eligible_count: eligibleCount,

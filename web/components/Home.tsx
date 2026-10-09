@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ClickableTile, Tag } from '@carbon/react';
-import { ArrowRight, Checkmark, Time } from '@carbon/icons-react';
+import { ArrowRight, Checkmark, CheckmarkFilled, Time } from '@carbon/icons-react';
 import type { AppState, Signal } from '@/lib/types';
 import { iconFor } from '@/lib/icons';
 import { AiBadge } from './common';
@@ -31,7 +31,12 @@ export default function Home({ state, onSignal, onSuggestion }: Props) {
     setNow({ greet: greeting(), date: new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) });
   }, []);
 
-  const n = state.signals.length;
+  // A signal is handled once every record behind it has been actioned this session. It
+  // leaves the grid and moves to the "Done today" row; a reset brings it back.
+  const isHandled = (s: Signal) => s.count > 0 && s.actioned >= s.count;
+  const open = state.signals.filter((s) => !isHandled(s));
+  const handled = state.signals.filter(isHandled);
+  const n = open.length;
   const signalCols = n === 4 ? 4 : Math.min(3, Math.max(1, n));
 
   return (
@@ -58,10 +63,10 @@ export default function Home({ state, onSignal, onSuggestion }: Props) {
       </div>
 
       {n === 0 ? (
-        <p className="empty-note">No signals right now.</p>
+        <p className="empty-note">{handled.length ? 'All signals handled. Nothing else needs your attention right now.' : 'No signals right now.'}</p>
       ) : (
         <div className="grid" style={{ ['--cols' as string]: signalCols }}>
-          {state.signals.map((s, i) => {
+          {open.map((s, i) => {
             const sev = SEVERITY[s.severity] || SEVERITY.low;
             const flow = state.assistants.find((a) => a.slug === s.flow_slug);
             const FlowIcon = iconFor(flow?.icon);
@@ -97,6 +102,19 @@ export default function Home({ state, onSignal, onSuggestion }: Props) {
               </ClickableTile>
             );
           })}
+        </div>
+      )}
+
+      {handled.length > 0 && (
+        <div className="done-signals">
+          <div className="done-signals__label">Done today</div>
+          {handled.map((s) => (
+            <button key={s.id} type="button" className="done-signal" onClick={() => onSignal(s)}>
+              <CheckmarkFilled size={16} className="done-signal__icon" />
+              <span className="done-signal__title">{s.title}</span>
+              <span className="done-signal__meta">{s.count === 1 ? 'Handled' : `All ${s.count} handled`}</span>
+            </button>
+          ))}
         </div>
       )}
 

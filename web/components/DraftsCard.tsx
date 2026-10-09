@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button, Dropdown, InlineLoading, InlineNotification, Tab, TabList, Tabs, Tag, TextArea, TextInput } from '@carbon/react';
-import { Chat, CheckmarkFilled, Document, Email, Locked, Misuse, Phone, Renew, Send, Time, ToolKit, WarningAltFilled } from '@carbon/icons-react';
+import { Chat, CheckmarkFilled, DeliveryTruck, Document, Email, Locked, Misuse, Phone, Renew, Send, Time, ToolKit, WarningAltFilled } from '@carbon/icons-react';
 import type { CarbonIconType } from '@carbon/icons-react';
 import { api, streamPost } from '@/lib/api';
 import type { ApproveResult, FactCheck, FactOverrides, FlowStart, ReviewItem } from '@/lib/types';
@@ -33,8 +33,8 @@ type Props = {
   onFallback: () => void;
 };
 
-const CONTENT_TYPES = ['Email', 'SMS', 'Portal message', 'Work order', 'Handover summary'];
-const CONTENT_ICONS: Record<string, CarbonIconType> = { SMS: Phone, 'Portal message': Chat, 'Work order': ToolKit, 'Handover summary': Document };
+const CONTENT_TYPES = ['Email', 'SMS', 'Portal message', 'Work order', 'Transfer order', 'Handover summary'];
+const CONTENT_ICONS: Record<string, CarbonIconType> = { SMS: Phone, 'Portal message': Chat, 'Work order': ToolKit, 'Transfer order': DeliveryTruck, 'Handover summary': Document };
 
 // "SMS" stays upper case; everything else reads naturally in lower case ("Draft work order to ...").
 function contentNoun(type: string) {

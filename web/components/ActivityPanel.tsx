@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Button, HeaderPanel, InlineLoading, InlineNotification, Tag } from '@carbon/react';
-import { Activity, Chat, Close, Document, Email, Phone, Task, Ticket, ToolKit } from '@carbon/icons-react';
+import { Activity, Chat, Close, DeliveryTruck, Document, Email, Phone, Task, Ticket, ToolKit } from '@carbon/icons-react';
 import type { CarbonIconType } from '@carbon/icons-react';
 import { api } from '@/lib/api';
 import type { ActivityEntry } from '@/lib/types';
@@ -13,6 +13,7 @@ const ACTIONS: Record<string, [CarbonIconType, (e: ActivityEntry) => string]> = 
   sms_sent: [Phone, (e) => `Text sent to ${e.record_name}`],
   portal_message_sent: [Chat, (e) => `Portal message sent to ${e.record_name}`],
   work_order_created: [ToolKit, (e) => `Work order created for ${e.record_name}`],
+  transfer_created: [DeliveryTruck, (e) => `Transfer order created for ${e.record_name}`],
   summary_shared: [Document, (e) => `Handover summary shared${Array.isArray(e.payload.records) ? ` (${e.payload.records.length} items)` : ''}`],
   task_created: [Task, (e) => `Follow-up task for ${e.record_name}`],
   ticket_opened: [Ticket, (e) => `Ticket #${e.id} opened${e.payload.queue ? ` in ${e.payload.queue}` : ''}`],
